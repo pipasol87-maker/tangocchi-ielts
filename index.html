@@ -241,6 +241,7 @@ button{font-family:inherit;}
 .sched-row .d{color:var(--main-d);}
 .dex-lvh{grid-column:1/-1; font-size:12px; font-weight:900; color:var(--main-d); margin:8px 2px 0;}
 .dex-cell .chk{color:var(--correct); font-size:10px; font-weight:900;}
+.dex-cell.todo{opacity:.62;}
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms !important; transition-duration:.01ms !important;}
@@ -328,8 +329,9 @@ button{font-family:inherit;}
       ✅「覚えた」にした単語は <b>3日後にテスト</b>に出るよ。テストに合格すると完全マスター👑、まちがえたらまた3日後に再テスト。くり返して完璧にしよう！</p>
     <div class="section-title">📅 テストの予定</div>
     <div id="tSched"></div>
-    <div class="section-title" style="margin-top:14px">💪 できてない単語（タップで確認）</div>
-    <div class="dex-grid" id="weakGrid"></div>
+    <div class="section-title" style="margin-top:16px">📋 覚えた・覚えてない一覧</div>
+    <button class="tbtn" id="btnMakeList">📋 ボタン一つでリスト化する</button>
+    <div id="listResult"></div>
   </main>
 
   <!-- ===================== SHOP ===================== -->
@@ -1065,16 +1067,91 @@ function renderTest(){
       sc.appendChild(el);
     });
   }
-  // できてない単語リスト
-  const g=$("weakGrid"); g.innerHTML="";
-  weak.map(k=>WORD_BY[k]).sort((a,b)=>a._lv-b._lv)
-    .forEach(x=>{
-      const cell=document.createElement("div");
-      cell.className="dex-cell learning";
-      cell.innerHTML='<div class="w">'+x.w+'</div><div class="m">Lv'+x._lv+'・'+x.jp+'</div>';
-      cell.onclick=()=>showWordDetail(x);
-      g.appendChild(cell);
-    });
+  // 覚えた・覚えてない一覧
+  renderMemoryList();
+}
+
+/* ---- 覚えた／覚えてない ワンタップ一覧 ---- */
+function memoryCategories(){
+  const know=[], notyet=[], todo=[];
+  WORDS.forEach(x=>{
+    const c=S.cards[x.w];
+    if(c && (c.box>=4 || c.mark)) know.push(x);       // 覚えた（完全マスター or 覚えたチェック）
+    else if(c && c.seen) notyet.push(x);              // 覚えてない（学習したがまだ）
+    else todo.push(x);                                // まだ学習してない
+  });
+  const byLv=(a,b)=>a._lv-b._lv;
+  return {know:know.sort(byLv), notyet:notyet.sort(byLv), todo:todo.sort(byLv)};
+}
+function listCell(x,cls){
+  const cell=document.createElement("div");
+  cell.className="dex-cell "+cls;
+  cell.innerHTML='<div class="w">'+x.w+'</div><div class="m">Lv'+x._lv+'・'+x.jp+'</div>';
+  cell.onclick=()=>showWordDetail(x);
+  return cell;
+}
+function listNote(t){ const p=document.createElement("p"); p.style.cssText="font-size:12px;color:var(--sub);margin:0 2px 10px;line-height:1.6"; p.textContent=t; return p; }
+let showTodo=false;
+function renderMemoryList(){
+  const box=$("listResult"); if(!box) return; box.innerHTML="";
+  const {know,notyet,todo}=memoryCategories();
+
+  // まとめ
+  const sum=document.createElement("div"); sum.className="stats-row"; sum.style.marginTop="4px";
+  sum.innerHTML='<div class="stat"><b style="color:var(--correct)">'+know.length+'</b><span>覚えた</span></div>'+
+    '<div class="stat"><b style="color:var(--wrong)">'+notyet.length+'</b><span>覚えてない</span></div>'+
+    '<div class="stat"><b>'+todo.length+'</b><span>まだ</span></div>';
+  box.appendChild(sum);
+
+  // コピー
+  const cp=document.createElement("button"); cp.className="tbtn ghost"; cp.style.margin="0 0 14px";
+  cp.textContent="📄 このリストをコピー（メモ・LINEに貼れる）";
+  cp.onclick=copyMemoryList;
+  box.appendChild(cp);
+
+  // ✅ 覚えた
+  const h1=document.createElement("div"); h1.className="section-title"; h1.textContent="✅ 覚えた（"+know.length+"語）";
+  box.appendChild(h1);
+  if(know.length){ const g=document.createElement("div"); g.className="dex-grid"; know.forEach(x=>g.appendChild(listCell(x,"mastered"))); box.appendChild(g); }
+  else box.appendChild(listNote("まだありません。テストに合格するか「✅ 覚えた」を押すとここに入るよ。"));
+
+  // 📕 覚えてない
+  const h2=document.createElement("div"); h2.className="section-title"; h2.style.marginTop="14px"; h2.textContent="📕 覚えてない（"+notyet.length+"語）";
+  box.appendChild(h2);
+  if(notyet.length){ const g=document.createElement("div"); g.className="dex-grid"; notyet.forEach(x=>g.appendChild(listCell(x,"learning"))); box.appendChild(g); }
+  else box.appendChild(listNote("覚えてない単語はゼロ！すばらしい✨"));
+
+  // ⬜ まだ学習してない（折りたたみ）
+  const h3=document.createElement("div"); h3.className="section-title"; h3.style.marginTop="14px"; h3.textContent="⬜ まだ学習してない（"+todo.length+"語）";
+  box.appendChild(h3);
+  if(todo.length){
+    const tg=document.createElement("button"); tg.className="tbtn ghost"; tg.style.margin="0";
+    tg.textContent=showTodo?"隠す":"見る（"+todo.length+"語）";
+    tg.onclick=()=>{ showTodo=!showTodo; renderMemoryList(); };
+    box.appendChild(tg);
+    if(showTodo){ const g=document.createElement("div"); g.className="dex-grid"; g.style.marginTop="10px"; todo.forEach(x=>g.appendChild(listCell(x,"todo"))); box.appendChild(g); }
+  } else box.appendChild(listNote("全部の単語に挑戦済み！"));
+}
+function copyMemoryList(){
+  const {know,notyet}=memoryCategories();
+  const L=[];
+  const deckName=(DECKS.find(d=>d.id===S.deck)||{}).name||"";
+  L.push("【たんごっち 学習リスト】"+today()+(deckName?"（"+deckName+"）":""));
+  L.push("");
+  L.push("■ 覚えた（"+know.length+"語）");
+  know.forEach(x=>L.push("・"+x.w+"  "+x.jp));
+  L.push("");
+  L.push("■ 覚えてない（"+notyet.length+"語）");
+  notyet.forEach(x=>L.push("・"+x.w+"  "+x.jp));
+  const text=L.join("\n");
+  const done=()=>toast("リストをコピーしたよ📄");
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done,()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){
+  try{ const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.top="-9999px"; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand("copy"); ta.remove(); done(); }
+  catch(e){ toast("コピーできなかった🥲 画面から手で書き写してね"); }
 }
 function renderShop(){
   $("shopGems").textContent=S.gems;
@@ -1165,6 +1242,7 @@ $("markBtn").onclick=()=>{
 };
 $("btnTestDue").onclick=()=>startTest(testDuePool(),"今日のテスト");
 $("btnTestWeak").onclick=()=>startTest(weakPoolAll(),"できてない単語テスト");
+$("btnMakeList").onclick=()=>{ renderMemoryList(); toast("覚えた・覚えてないをリスト化したよ📋"); };
 $("modal").addEventListener("click",e=>{ if(e.target.id==="modal"){ const hadActions=!!modalActions; closeModal(); if(!hadActions) showNextCeleb(); } });
 $("pet").onclick=()=>{ petReact("happy", S.genki<25?pick(MSG.hungry):pick(MSG.pet)); beep(660); };
 $("tgAuto").onclick=()=>{ S.auto=!S.auto; save(); renderSettings(); };
